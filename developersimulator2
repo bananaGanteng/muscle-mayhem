@@ -81,7 +81,7 @@ end
 local function AutoTeleport()
     while runningKill do
         teleportPlayer()
-        task.wait(15) -- Tunggu 1 menit sebelum teleport berikutnya
+        task.wait(10) -- Tunggu 1 menit sebelum teleport berikutnya
     end
 end
 
