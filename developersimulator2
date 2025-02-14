@@ -6,7 +6,7 @@ local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/jens
 
 -- Membuat jendela UI
 local Window = OrionLib:MakeWindow({
-    Name = "by Jonrickhh",
+    Name = "by Jonrickhh v.5",
     HidePremium = false,
     SaveConfig = true,
     ConfigFolder = "OrionTest"
