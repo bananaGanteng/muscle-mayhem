@@ -19,10 +19,6 @@ local Tab = Window:MakeTab({
     PremiumOnly = false
 })
 
--- Menambahkan Section ke dalam Tab
-local Section = Tab:AddSection({
-    Name = "menu 1"
-})
 
 
 local player = game.Players.LocalPlayer
@@ -357,6 +353,55 @@ Tab:AddToggle({
 })
 
 
+
+local player = game:GetService("Players").LocalPlayer
+local virtualUser = game:GetService("VirtualUser")
+local antiAFKActive = false -- Status awal mati
+local antiAFKThread -- Untuk menyimpan thread Anti-AFK
+
+-- Fungsi untuk mengaktifkan/mematikan Anti-AFK
+local function toggleAntiAFK(state)
+    antiAFKActive = state
+    print("[ANTI-AFK] Status: " .. tostring(antiAFKActive))
+
+    if antiAFKActive then
+        -- Jika aktif, jalankan fungsi Anti-AFK
+        antiAFKThread = task.spawn(function()
+            while antiAFKActive do
+                wait(60) -- Setiap 60 detik
+
+                virtualUser:CaptureController()
+                virtualUser:ClickButton2(Vector2.new()) -- Simulasi klik kanan
+
+                print("[ANTI-AFK] Simulasi klik berhasil dilakukan!")
+            end
+        end)
+
+        -- Cegah pemain terdeteksi AFK oleh sistem
+        player.Idled:Connect(function()
+            if antiAFKActive then
+                virtualUser:CaptureController()
+                virtualUser:ClickButton2(Vector2.new())
+
+                print("[ANTI-AFK] Pemain dideteksi idle, aksi pencegahan AFK dilakukan!")
+            end
+        end)
+    else
+        -- Jika dimatikan, hentikan thread
+        if antiAFKThread then
+            task.cancel(antiAFKThread)
+        end
+    end
+end
+
+-- Toggle Button
+Tab:AddToggle({
+    Name = "Auto AFK",
+    Default = false,
+    Callback = function(Value)
+        toggleAntiAFK(Value)
+    end    
+})
 
 
 local Tab = Window:MakeTab({
