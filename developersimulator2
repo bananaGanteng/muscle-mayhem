@@ -27,10 +27,11 @@ local Section = Tab:AddSection({
 
 local player = game.Players.LocalPlayer
 local runningKill = false
+local cloned = false -- Agar hanya bisa clone 1 kali
 
 -- CFrame untuk teleportasi
 local teleportCFrame = CFrame.new(
-    -1602.07935, 387.710327, -3155.08032, 0.998037398, 3.99738624e-08, 0.0626208559, -3.78436269e-08, 1, -3.52040921e-08, -0.0626208559, 3.27652003e-08, 0.998037398
+    -1612.65369, 1356.10156, -2383.90063, 0.999904215, -1.88411899e-08, 0.0138406735, 1.82224547e-08, 1, 4.48303261e-08, -0.0138406735, -4.45738202e-08, 0.999904215
 )
 
 -- Fungsi untuk teleportasi pemain
@@ -59,7 +60,6 @@ end
 
 -- Fungsi AutoKill (Auto Farm)
 local function AutoKill()
-    -- Langsung equip & gunakan Tool pertama kali
     while runningKill do
         EquipTool("Combat")
         local combat = player.Character and player.Character:FindFirstChild("Combat")
@@ -77,26 +77,109 @@ local function AutoKill()
     end
 end
 
--- Fungsi Teleportasi setiap 1 menit
+-- Fungsi Auto Teleport setiap 10 detik
 local function AutoTeleport()
     while runningKill do
         teleportPlayer()
-        task.wait(10) -- Tunggu 1 menit sebelum teleport berikutnya
+        task.wait(10)
     end
 end
 
--- ✅ Toggle untuk Auto Farm
+-- ✅ Fungsi Clone Model (hanya bisa sekali)
+local function findAndCloneModel()
+    if cloned then return end
+
+    local punchingMansFolder = workspace:FindFirstChild("PunchingMans")
+    if punchingMansFolder then
+        local models = punchingMansFolder:GetChildren()
+        
+        if #models >= 28 then
+            local model = models[28] -- Ambil model ke-28
+            if model:IsA("Model") and model.Name == "AldarShonoevBros" then
+                -- Clone Model
+                local clonedModel = model:Clone()
+                clonedModel.Parent = workspace
+                cloned = true -- Tandai sudah di-clone agar tidak bisa lagi
+
+                -- Ambil posisi model asli
+                local primaryPart = model.PrimaryPart or model:GetChildren()[1]
+                local clonedPrimaryPart = clonedModel.PrimaryPart or clonedModel:GetChildren()[1]
+
+                if primaryPart and clonedPrimaryPart then
+                    clonedPrimaryPart.Position = primaryPart.Position + Vector3.new(-200, 0, 0)
+                end
+
+                -- Tunggu 1 detik sebelum teleport
+                task.wait(1)
+
+                -- Teleport Model asli ke depan karakter
+                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local hrp = player.Character.HumanoidRootPart
+                    local forwardDirection = hrp.CFrame.LookVector
+                    model:SetPrimaryPartCFrame(hrp.CFrame + (forwardDirection * 5))
+                end
+            end
+        end
+    end
+end
+
+-- ✅ Fungsi untuk mengubah ukuran Part dan menambah Part baru
+local function modifyParts()
+    local folder = game.Workspace:FindFirstChild("kinghell_folder") -- Cari folder di Workspace
+
+    if folder then
+        local part = folder:FindFirstChild("KingHell_Wall") -- Cari Part di dalam folder
+        
+        if part then
+            print("KingHell_Wall ditemukan, mengubah ukurannya...")
+
+            -- Ubah ukuran Part utama
+            part.Size = Vector3.new(200, 2500, 200) -- Lebih besar dari sebelumnya
+
+            -- Buat Part baru
+            local newPart = Instance.new("Part")
+            
+            -- Ukuran lebih besar dari sebelumnya
+            newPart.Size = Vector3.new(30, 30, 30) -- Diperbesar dari 20x20x20
+            
+            -- Posisi Part
+            local posisi = Vector3.new(-1612.62085, 1338.90662, -2388.44165)
+
+            -- Rotasi yang lebih rapi (hanya rotasi pada sumbu Y)
+            local rotasi = CFrame.Angles(0, math.rad(90), 0) -- Rotasi 90 derajat di sumbu Y
+
+            -- Atur CFrame
+            newPart.CFrame = CFrame.new(posisi) * rotasi
+
+            -- Properti tambahan untuk newPart
+            newPart.Anchored = true
+            newPart.Parent = game.Workspace
+
+            print("Part baru berhasil dibuat dengan ukuran lebih besar dan rotasi yang lebih rapi!")
+
+        else
+            warn("KingHell_Wall tidak ditemukan di dalam kinghell_folder.")
+        end
+    else
+        warn("Folder kinghell_folder tidak ditemukan di Workspace.")
+    end
+end
+
+-- ✅ Toggle untuk Auto Farm + Clone Model saat pertama kali diaktifkan
 Tab:AddToggle({
     Name = "Auto farm",
     Default = false,
     Callback = function(Value)
         runningKill = Value
         if Value then
-            task.spawn(AutoKill)       -- Jalankan AutoKill langsung
-            task.spawn(AutoTeleport)   -- Jalankan teleport setiap 1 menit
+            task.spawn(findAndCloneModel) -- Clone model hanya pertama kali Auto Farm aktif
+            task.spawn(AutoKill) -- Mulai Auto Kill
+            task.spawn(AutoTeleport) -- Mulai Auto Teleport
+            task.spawn(modifyParts) -- Ubah ukuran Part dan buat Part baru
         end
     end    
 })
+
 
 
 local Players = game:GetService("Players")
@@ -271,4 +354,89 @@ Tab:AddToggle({
             end
         end
     end    
+})
+
+
+
+
+local Tab = Window:MakeTab({
+	Name = "teleport",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+--[[
+Name = <string> - The name of the tab.
+Icon = <string> - The icon of the tab.
+PremiumOnly = <bool> - Makes the tab accessible to Sirus Premium users only.
+]]
+
+
+
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+
+-- CFrame tujuan teleportasi (World 1)
+local targetCFrame = CFrame.new(
+    -1615.55847, 421.034363, -1636.09802, 
+    0.998981953, -0.0290346928, -0.0345252268, 
+    0.0278766174, 0.999047697, -0.0335640423, 
+    0.0354668722, 0.0325674266, 0.998840034
+)
+
+-- Fungsi teleportasi
+local function teleportPlayer()
+    character = player.Character or player.CharacterAdded:Wait() -- Pastikan karakter ada
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+
+    if humanoidRootPart then
+        humanoidRootPart.CFrame = targetCFrame
+        print("Teleportasi berhasil ke:", targetCFrame.Position)
+    else
+        warn("HumanoidRootPart tidak ditemukan!")
+    end
+end
+
+-- Tambahkan tombol untuk teleportasi
+Tab:AddButton({
+	Name = "world 1",
+	Callback = function()
+      		print("Teleportasi ke World 1!")
+      		teleportPlayer() -- Panggil fungsi teleportasi saat tombol ditekan
+  	end    
+})
+
+
+
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+
+-- CFrame tujuan teleportasi (World 1)
+local targetCFrame = CFrame.new(
+    -1602.38416, 1386.44788, 8663.70898, 
+    0.984416962, -0.0187322889, -0.174849436, 
+    0.018268194, 0.999824047, -0.00426350394, 
+    0.174898535, 0.00100288226, 0.984585941
+)
+
+-- Fungsi teleportasi
+local function teleportPlayer()
+    character = player.Character or player.CharacterAdded:Wait() -- Pastikan karakter ada
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+
+    if humanoidRootPart then
+        humanoidRootPart.CFrame = targetCFrame
+        print("Teleportasi berhasil ke:", targetCFrame.Position)
+    else
+        warn("HumanoidRootPart tidak ditemukan!")
+    end
+end
+
+-- Tambahkan tombol untuk teleportasi
+Tab:AddButton({
+	Name = "world 2",
+	Callback = function()
+      		print("Teleportasi ke World 1!")
+      		teleportPlayer() -- Panggil fungsi teleportasi saat tombol ditekan
+  	end    
 })
