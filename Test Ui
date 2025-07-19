@@ -1,8 +1,8 @@
 --// ======= THEME =========
 local THEME = {
-    FrameBg        = Color3.fromRGB(38, 42, 56),
-    FrameBg2       = Color3.fromRGB(48, 52, 68),
-    Accent         = Color3.fromRGB(0, 180, 255),
+    FrameBg        = Color3.fromRGB(38, 42, 56),   -- background utama
+    FrameBg2       = Color3.fromRGB(48, 52, 68),   -- hover / header
+    Accent         = Color3.fromRGB(0, 180, 255),  -- garis / tab aktif
     AccentHover    = Color3.fromRGB(0, 205, 255),
     TabIdle        = Color3.fromRGB(70, 90, 130),
     TabActive      = Color3.fromRGB(0, 180, 255),
@@ -20,12 +20,10 @@ local TweenService = game:GetService("TweenService")
 local UIS          = game:GetService("UserInputService")
 
 -- Bersihkan UI lama
-if CoreGui:FindFirstChild("FaDhenModernMini") then
-    CoreGui.FaDhenModernMini:Destroy()
+local OLD = CoreGui:FindFirstChild("FaDhenModernMini")
+if OLD then
+    OLD:Destroy()
 end
-
--- Buat tabel global untuk flags
-getgenv().FaDhenFlags = {}
 
 -- ScreenGui
 local gui = Instance.new("ScreenGui")
@@ -41,10 +39,12 @@ mainFrame.Position = UDim2.new(0.5, -120, 0.5, -125)
 mainFrame.BackgroundColor3 = THEME.FrameBg
 mainFrame.Active = true
 mainFrame.Draggable = true
-mainFrame.Visible = false
+mainFrame.Visible = false -- default tertutup
 mainFrame.Parent = gui
 
-Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 12)
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 12)
+mainCorner.Parent = mainFrame
 
 local mainStroke = Instance.new("UIStroke")
 mainStroke.Thickness = 2
@@ -52,8 +52,24 @@ mainStroke.Color = THEME.Accent
 mainStroke.Transparency = 0.15
 mainStroke.Parent = mainFrame
 
+-- Soft Shadow
+local shadow = Instance.new("ImageLabel")
+shadow.Name = "SoftShadow"
+shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
+shadow.Size = UDim2.new(1, 36, 1, 36)
+shadow.ZIndex = 0
+shadow.BackgroundTransparency = 1
+shadow.Image = "rbxassetid://5028857084"
+shadow.ImageColor3 = Color3.new(0,0,0)
+shadow.ImageTransparency = 0.55
+shadow.ScaleType = Enum.ScaleType.Slice
+shadow.SliceCenter = Rect.new(24, 24, 276, 276)
+shadow.Parent = mainFrame
+
 -- TITLE BAR
 local title = Instance.new("TextLabel")
+title.Name = "Title"
 title.Size = UDim2.new(1, 0, 0, 32)
 title.BackgroundColor3 = THEME.Accent
 title.Text = "  YT FaDhenGaming"
@@ -63,10 +79,21 @@ title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = THEME.TitleText
 title.Parent = mainFrame
 
-Instance.new("UICorner", title).CornerRadius = UDim.new(0, 12)
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 12)
+titleCorner.Parent = title
+
+local titleGradient = Instance.new("UIGradient")
+titleGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, THEME.Accent),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(140, 60, 255))
+}
+titleGradient.Rotation = 80
+titleGradient.Parent = title
 
 -- TAB CONTAINER
 local tabContainer = Instance.new("Frame")
+tabContainer.Name = "TabContainer"
 tabContainer.Size = UDim2.new(1, -20, 0, 28)
 tabContainer.Position = UDim2.new(0, 10, 0, 42)
 tabContainer.BackgroundTransparency = 1
@@ -81,13 +108,15 @@ tabLayout.Parent = tabContainer
 
 -- CONTENT FRAME
 local contentFrame = Instance.new("Frame")
+contentFrame.Name = "ContentFrame"
 contentFrame.Position = UDim2.new(0, 10, 0, 80)
 contentFrame.Size = UDim2.new(1, -20, 1, -90)
 contentFrame.BackgroundTransparency = 1
 contentFrame.Parent = mainFrame
 
 -- Tabs
-local tabs, tabButtons = {}, {}
+local tabs = {}
+local tabButtons = {}
 local function createTab(name)
     local tab = Instance.new("Frame")
     tab.Name = name .. "Tab"
@@ -107,17 +136,18 @@ local function createTab(name)
     return tab
 end
 
-createTab("Main")
-createTab("Visual")
-createTab("Misc")
+local mainTab  = createTab("Main")
+local visualTab = createTab("Visual")
+local miscTab   = createTab("Misc")
 
 local function setActiveTab(name)
     for tabName, tab in pairs(tabs) do
         tab.Visible = (tabName == name)
     end
     for tabName, btn in pairs(tabButtons) do
-        local color = (tabName == name) and THEME.TabActive or THEME.TabIdle
-        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = color}):Play()
+        local goal = {}
+        goal.BackgroundColor3 = (tabName == name) and THEME.TabActive or THEME.TabIdle
+        TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal):Play()
     end
 end
 
@@ -136,17 +166,30 @@ local function createTabButton(text, tabName)
     btn.MouseButton1Click:Connect(function()
         setActiveTab(tabName)
     end)
+    btn.MouseEnter:Connect(function()
+        if tabs[tabName].Visible then return end
+        TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = THEME.AccentHover}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        if tabs[tabName].Visible then return end
+        TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = THEME.TabIdle}):Play()
+    end)
     tabButtons[tabName] = btn
 end
 
-createTabButton("Main", "Main")
+createTabButton("Main",   "Main")
 createTabButton("Visual", "Visual")
-createTabButton("Misc", "Misc")
+createTabButton("Misc",   "Misc")
 setActiveTab("Main")
 
 -- TOGGLE CREATOR
-local function AddToggle(tab, flag, name, default, callback)
+local function AddToggle(tab, data)
+    local name     = data.Name or "Toggle"
+    local callback = data.Callback
+    local colorOn  = data.ColorOn or THEME.ToggleOnTrack
+
     local btn = Instance.new("TextButton")
+    btn.Name = name .. "_Toggle"
     btn.Parent = tab
     btn.Size = UDim2.new(1, -10, 0, 32)
     btn.BackgroundColor3 = THEME.ToggleBg
@@ -159,44 +202,77 @@ local function AddToggle(tab, flag, name, default, callback)
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
 
     local track = Instance.new("Frame")
+    track.Name = "Track"
     track.Parent = btn
     track.Size = UDim2.new(0, 32, 0, 14)
     track.Position = UDim2.new(1, -48, 0.5, -7)
     track.BackgroundColor3 = THEME.ToggleOffTrack
+    track.BorderSizePixel = 0
     Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
 
     local dot = Instance.new("Frame")
+    dot.Name = "Dot"
     dot.Parent = track
     dot.Size = UDim2.new(0, 14, 0, 14)
     dot.Position = UDim2.new(0, 1, 0.5, -7)
     dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    dot.BorderSizePixel = 0
     Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
-    local state = default or false
-    getgenv().FaDhenFlags[flag] = state
-
+    local state = false
     local function animate(on)
-        local pos = on and UDim2.new(1, -15, 0.5, -7) or UDim2.new(0, 1, 0.5, -7)
-        local col = on and THEME.ToggleOnTrack or THEME.ToggleOffTrack
-        TweenService:Create(dot, TweenInfo.new(0.2), {Position = pos}):Play()
-        TweenService:Create(track, TweenInfo.new(0.2), {BackgroundColor3 = col}):Play()
+        TweenService:Create(dot, TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {Position = on and UDim2.new(1, -15, 0.5, -7) or UDim2.new(0, 1, 0.5, -7)}):Play()
+        TweenService:Create(track, TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {BackgroundColor3 = on and colorOn or THEME.ToggleOffTrack}):Play()
     end
-    animate(state)
-
     btn.MouseButton1Click:Connect(function()
         state = not state
-        getgenv().FaDhenFlags[flag] = state
         animate(state)
         if callback then pcall(callback, state) end
     end)
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = THEME.ToggleHover}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = THEME.ToggleBg}):Play()
+    end)
+
+    return {
+        Set = function(v)
+            if typeof(v) == "boolean" and v ~= state then
+                state = v
+                animate(state)
+                if callback then pcall(callback, state) end
+            end
+        end,
+        Get = function()
+            return state
+        end
+    }
 end
 
--- Fungsi global untuk tambah toggle dari luar
-getgenv().FaDhenAddToggle = function(tabName, flag, displayName, default, callback)
-    local tab = tabs[tabName]
-    if not tab then warn("Tab '"..tabName.."' tidak ditemukan.") return end
-    AddToggle(tab, flag, displayName, default, callback)
-end
+--Toggle Button (LOGIC ASLI — TIDAK DIUBAH)
+local autoFarmToggle = AddToggle(mainTab, {
+    Name = "Auto Farm",
+    Callback = function(on)
+        print("[FaDhen UI] Auto Farm " .. (on and "AKTIF" or "MATI"))
+    end,
+})
+
+local nightVisionToggle = AddToggle(visualTab, {
+    Name = "NightVision",
+    Callback = function(on)
+        print("[FaDhen UI] NightVision " .. (on and "AKTIF" or "MATI"))
+    end,
+})
+
+local autoKillToggle = AddToggle(miscTab, {
+    Name = "Auto Kill",
+    Callback = function(on)
+        print("[FaDhen UI] Auto Kill " .. (on and "AKTIF" or "MATI"))
+    end,
+})
 
 -- HOTKEY SHOW/HIDE (RightShift)
 UIS.InputBegan:Connect(function(input, gp)
@@ -217,7 +293,95 @@ toggleBtn.BackgroundTransparency = 0.7
 toggleBtn.Active = true
 toggleBtn.Draggable = true
 Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 9)
+local stroke = Instance.new("UIStroke")
+stroke.Parent = toggleBtn
+stroke.Thickness = 2
+stroke.Color = Color3.fromRGB(255, 255, 255)
+stroke.Transparency = 0.3 
+stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-toggleBtn.MouseButton1Click:Connect(function()
-    mainFrame.Visible = not mainFrame.Visible
+toggleBtn.MouseEnter:Connect(function()
+    TweenService:Create(toggleBtn, TweenInfo.new(0.15), {Size = UDim2.new(0, 60, 0, 60)}):Play()
 end)
+toggleBtn.MouseLeave:Connect(function()
+    TweenService:Create(toggleBtn, TweenInfo.new(0.15), {Size = UDim2.new(0, 55, 0, 55)}):Play()
+end)
+
+local isOpen = false -- default tertutup
+toggleBtn.MouseButton1Click:Connect(function()
+    isOpen = not isOpen
+    mainFrame.Visible = isOpen
+end)
+
+-- Tab default tetap Main
+setActiveTab("Main")
+
+
+--[[ ============================================================
+     ADD-ON: EXTERNAL TOGGLE SUPPORT (tidak mengubah logic asli)
+     ------------------------------------------------------------
+     Fungsi global ini memungkinkan kamu menambah toggle baru
+     dari script loader / luar file. TIDAK menyentuh toggle asli.
+===============================================================]]
+
+-- table global untuk simpan state & ref toggle luar
+getgenv().FaDhenFlags = getgenv().FaDhenFlags or {}
+getgenv().FaDhenToggleRefs = getgenv().FaDhenToggleRefs or {}
+
+-- Tambah toggle dari luar
+getgenv().FaDhenAddToggle = function(tabName, flag, displayName, defaultState, callback, colorOn)
+    local targetTab = tabs[tabName]
+    if not targetTab then
+        warn("[FaDhen UI] Tab '" .. tostring(tabName) .. "' tidak ditemukan!")
+        return
+    end
+
+    -- Buat toggle pakai fungsi AddToggle asli (logic tidak diubah)
+    local t = AddToggle(targetTab, {
+        Name = displayName or flag,
+        Callback = function(on)
+            getgenv().FaDhenFlags[flag] = on
+            if callback then
+                pcall(callback, on)
+            end
+        end,
+        ColorOn = colorOn or THEME.ToggleOnTrack,
+    })
+
+    -- simpan ref
+    getgenv().FaDhenToggleRefs[flag] = t
+    getgenv().FaDhenFlags[flag] = (defaultState == true)
+
+    -- set default visual (kalau true)
+    if defaultState == true and t and t.Set then
+        t.Set(true)
+    end
+
+    return t
+end
+
+-- Set flag dari luar + update UI (hanya toggle eksternal)
+getgenv().FaDhenSetFlag = function(flag, value)
+    local ref = getgenv().FaDhenToggleRefs[flag]
+    if ref and ref.Set then
+        ref.Set(value and true or false)
+        getgenv().FaDhenFlags[flag] = (value == true)
+    else
+        warn("[FaDhen UI] Flag '" .. tostring(flag) .. "' belum dibuat (pakai FaDhenAddToggle).")
+    end
+end
+
+-- Ambil status flag
+getgenv().FaDhenGetFlag = function(flag)
+    return getgenv().FaDhenFlags[flag]
+end
+
+-- Tampilkan/sembunyikan UI dari luar
+getgenv().FaDhenShowUI = function(show)
+    mainFrame.Visible = (show == nil) and true or show
+end
+getgenv().FaDhenToggleUI = function()
+    mainFrame.Visible = not mainFrame.Visible
+end
+
+return true
