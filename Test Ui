@@ -246,33 +246,9 @@ local function AddToggle(tab, data)
                 if callback then pcall(callback, state) end
             end
         end,
-        Get = function()
-            return state
-        end
+        Get = function() return state end
     }
 end
-
---Toggle Button (LOGIC ASLI — TIDAK DIUBAH)
-local autoFarmToggle = AddToggle(mainTab, {
-    Name = "Auto Farm",
-    Callback = function(on)
-        print("[FaDhen UI] Auto Farm " .. (on and "AKTIF" or "MATI"))
-    end,
-})
-
-local nightVisionToggle = AddToggle(visualTab, {
-    Name = "NightVision",
-    Callback = function(on)
-        print("[FaDhen UI] NightVision " .. (on and "AKTIF" or "MATI"))
-    end,
-})
-
-local autoKillToggle = AddToggle(miscTab, {
-    Name = "Auto Kill",
-    Callback = function(on)
-        print("[FaDhen UI] Auto Kill " .. (on and "AKTIF" or "MATI"))
-    end,
-})
 
 -- HOTKEY SHOW/HIDE (RightShift)
 UIS.InputBegan:Connect(function(input, gp)
@@ -301,34 +277,24 @@ stroke.Transparency = 0.3
 stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 toggleBtn.MouseEnter:Connect(function()
-    TweenService:Create(toggleBtn, TweenInfo.new(0.15), {Size = UDim2.new(0, 60, 0, 60)}):Play()
+	TweenService:Create(toggleBtn, TweenInfo.new(0.15), {Size = UDim2.new(0, 60, 0, 60)}):Play()
 end)
 toggleBtn.MouseLeave:Connect(function()
-    TweenService:Create(toggleBtn, TweenInfo.new(0.15), {Size = UDim2.new(0, 55, 0, 55)}):Play()
+	TweenService:Create(toggleBtn, TweenInfo.new(0.15), {Size = UDim2.new(0, 55, 0, 55)}):Play()
 end)
 
-local isOpen = false -- default tertutup
+local isOpen = false
 toggleBtn.MouseButton1Click:Connect(function()
     isOpen = not isOpen
     mainFrame.Visible = isOpen
 end)
 
--- Tab default tetap Main
 setActiveTab("Main")
 
-
---[[ ============================================================
-     ADD-ON: EXTERNAL TOGGLE SUPPORT (tidak mengubah logic asli)
-     ------------------------------------------------------------
-     Fungsi global ini memungkinkan kamu menambah toggle baru
-     dari script loader / luar file. TIDAK menyentuh toggle asli.
-===============================================================]]
-
--- table global untuk simpan state & ref toggle luar
+-- ======= EXTERNAL TOGGLE SUPPORT =======
 getgenv().FaDhenFlags = getgenv().FaDhenFlags or {}
 getgenv().FaDhenToggleRefs = getgenv().FaDhenToggleRefs or {}
 
--- Tambah toggle dari luar
 getgenv().FaDhenAddToggle = function(tabName, flag, displayName, defaultState, callback, colorOn)
     local targetTab = tabs[tabName]
     if not targetTab then
@@ -336,47 +302,38 @@ getgenv().FaDhenAddToggle = function(tabName, flag, displayName, defaultState, c
         return
     end
 
-    -- Buat toggle pakai fungsi AddToggle asli (logic tidak diubah)
     local t = AddToggle(targetTab, {
         Name = displayName or flag,
         Callback = function(on)
             getgenv().FaDhenFlags[flag] = on
-            if callback then
-                pcall(callback, on)
-            end
+            if callback then pcall(callback, on) end
         end,
         ColorOn = colorOn or THEME.ToggleOnTrack,
     })
 
-    -- simpan ref
     getgenv().FaDhenToggleRefs[flag] = t
     getgenv().FaDhenFlags[flag] = (defaultState == true)
 
-    -- set default visual (kalau true)
     if defaultState == true and t and t.Set then
         t.Set(true)
     end
-
     return t
 end
 
--- Set flag dari luar + update UI (hanya toggle eksternal)
 getgenv().FaDhenSetFlag = function(flag, value)
     local ref = getgenv().FaDhenToggleRefs[flag]
     if ref and ref.Set then
         ref.Set(value and true or false)
         getgenv().FaDhenFlags[flag] = (value == true)
     else
-        warn("[FaDhen UI] Flag '" .. tostring(flag) .. "' belum dibuat (pakai FaDhenAddToggle).")
+        warn("[FaDhen UI] Flag '" .. tostring(flag) .. "' belum dibuat.")
     end
 end
 
--- Ambil status flag
 getgenv().FaDhenGetFlag = function(flag)
     return getgenv().FaDhenFlags[flag]
 end
 
--- Tampilkan/sembunyikan UI dari luar
 getgenv().FaDhenShowUI = function(show)
     mainFrame.Visible = (show == nil) and true or show
 end
