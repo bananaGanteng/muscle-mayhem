@@ -1,316 +1,44 @@
--- FaDhen Ray-Style Toggle Mini Lib
--- Simpel: Window -> AddToggle({Name, Flag, Default, Callback})
--- Set/Get/Destroy; akses eksternal via getgenv().FaDhenFlags dan getgenv().FaDhenLib
-
+-- FaDhen Simple Toggle Library
 local CoreGui = game:GetService("CoreGui")
-
-local DEFAULT_THEME = {
-    WindowBg     = Color3.fromRGB(32, 34, 40),
-    SectionBg    = Color3.fromRGB(40, 42, 52),
-    SectionLine  = Color3.fromRGB(60, 64, 80),
-    Text         = Color3.fromRGB(255, 255, 255),
-    AccentOff    = Color3.fromRGB(90, 90, 90),
-    AccentOn     = Color3.fromRGB(0, 180, 255),
-}
-
--- simple signal helper
-local function newSignal()
-    local bindable = Instance.new("BindableEvent")
-    return {
-        Fire = function(_, ...)
-            bindable:Fire(...)
-        end,
-        Connect = function(_, fn)
-            return bindable.Event:Connect(fn)
-        end,
-        Destroy = function(_) bindable:Destroy() end,
-    }
+if CoreGui:FindFirstChild("FaDhenSimpleGui") then
+    CoreGui.FaDhenSimpleGui:Destroy()
 end
 
--- dragging util
-local function makeDraggable(frame, dragArea)
-    dragArea = dragArea or frame
-    local dragging = false
-    local dragStart, startPos
+-- Variabel global default
+getgenv().AutoFarm = getgenv().AutoFarm or false
+getgenv().AutoSell = getgenv().AutoSell or false
+getgenv().Protection = getgenv().Protection or false
 
-    dragArea.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = frame.Position
-        end
-    end)
+-- GUI utama
+local gui = Instance.new("ScreenGui")
+gui.Name = "FaDhenSimpleGui"
+gui.Parent = CoreGui
 
-    dragArea.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 180, 0, 140)
+frame.Position = UDim2.new(0.05, 0, 0.2, 0)
+frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+frame.Parent = gui
 
-    game:GetService("UserInputService").InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y
-            )
-        end
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 5)
+layout.Parent = frame
+
+-- Fungsi global untuk menambah toggle
+local function addToggle(name, globalVar)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -10, 0, 30)
+    btn.Text = name .. ": OFF"
+    btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Parent = frame
+
+    btn.MouseButton1Click:Connect(function()
+        getgenv()[globalVar] = not getgenv()[globalVar]
+        btn.Text = name .. (getgenv()[globalVar] and ": ON" or ": OFF")
+        print(name, ":", getgenv()[globalVar])
     end)
 end
 
--- main lib table
-local Lib = {}
-Lib.__index = Lib
-
--- global flags + ref
-getgenv().FaDhenFlags = getgenv().FaDhenFlags or {}
-getgenv().FaDhenLib   = Lib -- (class ref; instances kept separately)
-
----------------------------------------------------------------------
--- CreateWindow({Name="FaDhen", Theme=..., Size=Vector2, StartPos=UDim2})
----------------------------------------------------------------------
-function Lib:CreateWindow(cfg)
-    cfg = cfg or {}
-    local theme = setmetatable(cfg.Theme or {}, {__index = DEFAULT_THEME})
-
-    -- destroy old window w/ same name
-    local winName = cfg.Name or "FaDhenWindow"
-    local old = CoreGui:FindFirstChild(winName)
-    if old then old:Destroy() end
-
-    local gui = Instance.new("ScreenGui")
-    gui.Name = winName
-    gui.ResetOnSpawn = false
-    gui.Parent = CoreGui
-
-    local size = cfg.Size or Vector2.new(240, 180)
-    local pos  = cfg.StartPos or UDim2.new(0.05, 0, 0.2, 0)
-
-    local main = Instance.new("Frame")
-    main.Name = "Main"
-    main.Size = UDim2.new(0, size.X, 0, size.Y)
-    main.Position = pos
-    main.BackgroundColor3 = theme.WindowBg
-    main.BorderSizePixel = 0
-    main.Parent = gui
-
-    -- topbar
-    local top = Instance.new("TextLabel")
-    top.Name = "Topbar"
-    top.Size = UDim2.new(1, 0, 0, 26)
-    top.BackgroundColor3 = theme.SectionBg
-    top.BorderSizePixel = 0
-    top.Text = cfg.Name or "FaDhen"
-    top.TextColor3 = theme.Text
-    top.Font = Enum.Font.GothamBold
-    top.TextSize = 14
-    top.Parent = main
-
-    -- content holder (ScrollingFrame so panjang aman)
-    local content = Instance.new("ScrollingFrame")
-    content.Name = "Content"
-    content.Position = UDim2.new(0, 0, 0, 26)
-    content.Size = UDim2.new(1, 0, 1, -26)
-    content.BackgroundTransparency = 1
-    content.CanvasSize = UDim2.new(0, 0, 0, 0)
-    content.ScrollBarThickness = 4
-    content.ScrollBarImageColor3 = theme.AccentOn
-    content.Parent = main
-
-    local layout = Instance.new("UIListLayout")
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 4)
-    layout.Parent = content
-
-    -- auto resize canvas height
-    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        content.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 8)
-    end)
-
-    makeDraggable(main, top)
-
-    local window = setmetatable({
-        _gui      = gui,
-        _main     = main,
-        _content  = content,
-        _theme    = theme,
-        _toggles  = {},         -- [flag] = toggleObj
-        Destroyed = false,
-    }, Lib)
-
-    return window
-end
-
----------------------------------------------------------------------
--- AddToggle({Name="AutoFarm", Flag="AutoFarm", Default=false, Callback=function(on) end})
--- returns toggleObj: {Set(bool), Get(), OnChanged:Signal, Frame, Label, Switch}
----------------------------------------------------------------------
-function Lib:AddToggle(cfg)
-    assert(not self.Destroyed, "Window destroyed")
-    cfg = cfg or {}
-    local name   = tostring(cfg.Name or "Toggle")
-    local flag   = tostring(cfg.Flag or name)
-    local state  = (cfg.Default == true)
-    local cb     = type(cfg.Callback) == "function" and cfg.Callback or function() end
-    local theme  = self._theme
-
-    -- container row
-    local row = Instance.new("Frame")
-    row.Name = "Toggle_" .. flag
-    row.Size = UDim2.new(1, -8, 0, 32)
-    row.BackgroundColor3 = theme.SectionBg
-    row.BorderSizePixel = 0
-    row.Parent = self._content
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = theme.SectionLine
-    stroke.Thickness = 1
-    stroke.Parent = row
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 4)
-    corner.Parent = row
-
-    -- label
-    local label = Instance.new("TextLabel")
-    label.Name = "Label"
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, -60, 1, 0)
-    label.Position = UDim2.new(0, 8, 0, 0)
-    label.Font = Enum.Font.Gotham
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.TextSize = 14
-    label.TextColor3 = theme.Text
-    label.Text = name
-    label.Parent = row
-
-    -- switch button (touch friendly)
-    local switch = Instance.new("TextButton")
-    switch.Name = "Switch"
-    switch.AnchorPoint = Vector2.new(1, 0.5)
-    switch.Position = UDim2.new(1, -10, 0.5, 0)
-    switch.Size = UDim2.new(0, 40, 0, 20)
-    switch.BackgroundColor3 = state and theme.AccentOn or theme.AccentOff
-    switch.Text = ""
-    switch.AutoButtonColor = false
-    switch.Parent = row
-
-    local switchCorner = Instance.new("UICorner")
-    switchCorner.CornerRadius = UDim.new(1, 0)
-    switchCorner.Parent = switch
-
-    -- indicator circle
-    local knob = Instance.new("Frame")
-    knob.Name = "Knob"
-    knob.Size = UDim2.new(0, 16, 0, 16)
-    knob.Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-    knob.BackgroundColor3 = Color3.fromRGB(255,255,255)
-    knob.BorderSizePixel = 0
-    knob.Parent = switch
-    local knobCorner = Instance.new("UICorner")
-    knobCorner.CornerRadius = UDim.new(1, 0)
-    knobCorner.Parent = knob
-
-    -- signal
-    local changedSignal = newSignal()
-
-    -- toggle object
-    local tgl = {}
-    tgl.Flag     = flag
-    tgl.Name     = name
-    tgl.State    = state
-    tgl.Frame    = row
-    tgl.Label    = label
-    tgl.Switch   = switch
-    tgl.Knob     = knob
-    tgl.OnChanged= changedSignal
-
-    local function render(v)
-        switch.BackgroundColor3 = v and theme.AccentOn or theme.AccentOff
-        knob.Position = v and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-    end
-
-    function tgl:Set(v, fromExternal)
-        v = (v == true)
-        if self.State == v then return end
-        self.State = v
-        getgenv().FaDhenFlags[self.Flag] = v
-        render(v)
-        if not fromExternal then
-            -- user click triggers callback immediately
-            task.spawn(cb, v)
-        end
-        changedSignal:Fire(v)
-    end
-
-    function tgl:Get()
-        return self.State
-    end
-
-    function tgl:Destroy()
-        if self.Frame then self.Frame:Destroy() end
-        changedSignal:Destroy()
-        self.Frame, self.Switch, self.Knob = nil, nil, nil
-        self.Destroyed = true
-    end
-
-    -- click -> toggle
-    switch.MouseButton1Click:Connect(function()
-        tgl:Set(not tgl.State, false)
-    end)
-
-    -- also allow clicking row area
-    row.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            tgl:Set(not tgl.State, false)
-        end
-    end)
-
-    -- init global flag
-    getgenv().FaDhenFlags[flag] = state
-
-    -- register in window
-    self._toggles[flag] = tgl
-
-    -- initial render
-    render(state)
-
-    return tgl
-end
-
----------------------------------------------------------------------
--- GetToggle(flag) -> toggleObj or nil
----------------------------------------------------------------------
-function Lib:GetToggle(flag)
-    return self._toggles[flag]
-end
-
----------------------------------------------------------------------
--- SetFlag(flag, bool) : external control helper
----------------------------------------------------------------------
-function Lib:SetFlag(flag, v)
-    local t = self._toggles[flag]
-    if t then
-        t:Set(v, true) -- fromExternal=true (skip user callback spawn? we still call cb via Set; but we flagged with fromExternal to avoid double spawn)
-    else
-        warn("[FaDhenLib] Flag not found:", flag)
-    end
-end
-
----------------------------------------------------------------------
--- Destroy window
----------------------------------------------------------------------
-function Lib:Destroy()
-    if self.Destroyed then return end
-    self.Destroyed = true
-    for _,t in pairs(self._toggles) do
-        if t.Destroy then t:Destroy() end
-    end
-    if self._gui then self._gui:Destroy() end
-end
-
-return Lib
+getgenv().AddToggle = addToggle
+return true
