@@ -5,28 +5,24 @@ local plots = workspace:WaitForChild("Plots")
 local toggleActive = false
 local debounce = false
 local resetFromScript = false
-
 local base = nil
 local purchasesFolder = nil
 
--- cache base milik player
+-- Cari base hanya sekali di awal
 do
     local userLower = string.lower(player.Name)
     local displayLower = string.lower(player.DisplayName)
     for _, model in ipairs(plots:GetChildren()) do
         if model:IsA("Model") then
-            local found = false
             for _, obj in ipairs(model:GetDescendants()) do
                 if obj:IsA("TextLabel") then
                     local txt = string.lower(obj.Text)
                     if string.find(txt, userLower, 1, true) or string.find(txt, displayLower, 1, true) then
                         base = model
-                        found = true
                         break
                     end
                 end
             end
-            if found then break end
         end
     end
 end
@@ -35,39 +31,15 @@ if base then
     purchasesFolder = base:FindFirstChild("Purchases")
 end
 
--- ===== internal connection/loop tracking =====
-local _connections = {}
-local function track(conn)
-    if conn then table.insert(_connections, conn) end
-    return conn
-end
-local _activeWalkLoop = false
-local _activeWiggleLoop = false
-
-local function stopAllInternal()
-    for _,conn in ipairs(_connections) do
-        if conn.Connected then conn:Disconnect() end
-    end
-    table.clear(_connections)
-    _activeWalkLoop = false
-    _activeWiggleLoop = false
-end
-
--- ===== original logic helpers (tidak diubah) =====
+-- Cache RemainingTime & Hitbox sekali saja
 local function findObjects()
     if not purchasesFolder then return nil, nil end
-    local rem, hit = nil, nil
-    local char = player.Character or player.CharacterAdded:Wait()
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return nil, nil end
+    local rem, hit
     for _, obj in ipairs(purchasesFolder:GetDescendants()) do
         if obj:IsA("TextLabel") and obj.Name == "RemainingTime" then
             rem = obj
         elseif obj:IsA("BasePart") and obj.Name == "Hitbox" then
-            local distance = (obj.Position - hrp.Position).Magnitude
-            if distance >= 47 and distance <= 60 then
-                hit = obj
-            end
+            hit = obj
         end
     end
     return rem, hit
@@ -75,75 +47,36 @@ end
 
 local function wiggleWhileCountdown(hrp, label, hitbox)
     local countdownSet = {["4s"]=true, ["3s"]=true, ["2s"]=true, ["1s"]=true, ["0s"]=true}
-    if not hrp or not hrp.Parent then return end
-    local char = hrp.Parent
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
-    if not label then return end
+    if not hrp or not hrp.Parent or not label then return end
 
-    -- hentikan wiggle lama dulu
-    _activeWiggleLoop = false
-    task.wait() -- beri 1 frame supaya loop lama sempat keluar
-    _activeWiggleLoop = true
+    local hum = hrp.Parent:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
 
     local centerPos = hitbox and hitbox.Position or hrp.Position
     local amplitude = 2
     local radiusLock = 6
-    local stepTime = 0.35
     local direction = 1
     local run = true
+
     local originalAutoRotate = hum.AutoRotate
     hum.AutoRotate = false
 
-    local function stillValid()
-        if not run then return false end
-        if not toggleActive then return false end
-        if not _activeWiggleLoop then return false end
-        if not hrp or not hrp.Parent then return false end
-        if not hum or hum.Health <= 0 then return false end
-        if not label or not label.Parent then return false end
-        return countdownSet[label.Text] == true
-    end
-
-    task.spawn(function()
-        while stillValid() do
-            local target = centerPos + Vector3.new(direction * amplitude, 0, 0)
-            if hitbox and hitbox.Parent then
-                centerPos = hitbox.Position
-                target = centerPos + Vector3.new(direction * amplitude, 0, 0)
-            end
-            hum:MoveTo(target)
-            hum.MoveToFinished:Wait(stepTime + 0.2)
-            direction = -direction
-        end
-        run = false
-    end)
-
     local hbConn
     hbConn = RunService.Heartbeat:Connect(function()
-        if not stillValid() then
+        if not toggleActive or not label or not countdownSet[label.Text] or not hum.Parent then
             run = false
             if hbConn then hbConn:Disconnect() end
+            hum.AutoRotate = originalAutoRotate
             return
         end
         if hitbox and hitbox.Parent then
             centerPos = hitbox.Position
         end
-        local dist = (hrp.Position - centerPos).Magnitude
-        if dist > radiusLock then
-            hrp.CFrame = CFrame.new(centerPos + Vector3.new(direction * amplitude * 0.5, 0, 0))
-        end
-    end)
-    track(hbConn)
-
-    task.spawn(function()
-        while stillValid() do
-            task.wait(0.2)
-        end
-        run = false
-        if hum and hum.Parent then
-            hum:Move(Vector3.new(0,0,0))
-            hum.AutoRotate = originalAutoRotate
+        local target = centerPos + Vector3.new(direction * amplitude, 0, 0)
+        hum:MoveTo(target)
+        direction = -direction
+        if (hrp.Position - centerPos).Magnitude > radiusLock then
+            hrp.CFrame = CFrame.new(centerPos)
         end
     end)
 end
@@ -154,69 +87,49 @@ local function walkToBase(hitbox)
     local hum = char:WaitForChild("Humanoid", 5)
     if not (hum and hrp and hitbox) then return end
 
-    -- hentikan loop jalan lama
-    _activeWalkLoop = false
-    task.wait()
-    _activeWalkLoop = true
-
     local touched = false
     local touchedConn
     touchedConn = hitbox.Touched:Connect(function(part)
-        if not toggleActive then return end
         if part:IsDescendantOf(char) then
             touched = true
-            if touchedConn then touchedConn:Disconnect() end
+            touchedConn:Disconnect()
             local countdownLabel, _ = findObjects()
             if countdownLabel then
                 wiggleWhileCountdown(hrp, countdownLabel, hitbox)
             end
         end
     end)
-    track(touchedConn)
 
     task.spawn(function()
-        while _activeWalkLoop and toggleActive and not touched and char and hum and hitbox do
+        while toggleActive and not touched do
             hum:MoveTo(hitbox.Position)
             task.wait(0.5)
         end
     end)
-
-    local conn
-    conn = hum.MoveToFinished:Connect(function(reached)
-        if conn then conn:Disconnect() end
-        if not toggleActive then return end
-        if reached and touched then
-            for i = 1, 2 do
-                if not toggleActive then break end
-                hum.Jump = true
-                task.wait(1)
-            end
-        end
-    end)
-    track(conn)
 end
 
--- ===== frame loop kontrol countdown =====
-local _mainLoopConn = nil
-local function startCountdownLoop()
-    if _mainLoopConn then return end
+-- Koneksi hanya aktif saat ON
+local countdownConnection
+
+local function startCountdown()
     local checkTimes = {"8s","6s"}
-    _mainLoopConn = RunService.RenderStepped:Connect(function()
+    if countdownConnection then countdownConnection:Disconnect() end
+
+    countdownConnection = RunService.Heartbeat:Connect(function()
         if not toggleActive then return end
-        local char = player.Character or player.CharacterAdded:Wait()
         local countdownLabel, hitboxPart = findObjects()
         if countdownLabel and not debounce then
             for _, t in ipairs(checkTimes) do
                 if countdownLabel.Text == t then
+                    local char = player.Character or player.CharacterAdded:Wait()
                     local hum = char:FindFirstChildOfClass("Humanoid")
                     if hum then
                         debounce = true
-                        resetFromScript = true
                         hum.Health = 0
                         task.spawn(function()
                             player.CharacterAdded:Wait()
                             local _, newHitbox = findObjects()
-                            if toggleActive and newHitbox then
+                            if newHitbox then
                                 walkToBase(newHitbox)
                             end
                             task.delay(1, function()
@@ -229,25 +142,14 @@ local function startCountdownLoop()
             end
         end
     end)
-    track(_mainLoopConn)
 end
 
-local function stopCountdownLoop()
-    if _mainLoopConn then
-        if _mainLoopConn.Connected then _mainLoopConn:Disconnect() end
-        _mainLoopConn = nil
-    end
-end
-
--- ===== public enable/disable =====
+-- Toggle ON/OFF
 local function AutoLockBase_SetEnabled(state)
-    if state and not toggleActive then
-        toggleActive = true
-        startCountdownLoop()
-
+    toggleActive = state
+    if state then
         if not debounce then
             debounce = true
-            resetFromScript = true
             local char = player.Character
             if char then
                 local hum = char:FindFirstChildOfClass("Humanoid")
@@ -255,22 +157,17 @@ local function AutoLockBase_SetEnabled(state)
             end
             player.CharacterAdded:Wait()
             task.delay(0.1, function()
-                if not toggleActive then return end
                 local _, hitbox = findObjects()
-                if hitbox then
-                    walkToBase(hitbox)
-                end
+                if hitbox then walkToBase(hitbox) end
                 debounce = false
-                resetFromScript = false
             end)
         end
-
-    elseif (not state) and toggleActive then
-        toggleActive = false
-        stopCountdownLoop()
-        stopAllInternal()
-        debounce = false
-        resetFromScript = false
+        startCountdown()
+    else
+        if countdownConnection then
+            countdownConnection:Disconnect()
+            countdownConnection = nil
+        end
     end
 end
 
