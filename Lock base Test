@@ -1,0 +1,208 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+
+local RESCAN_INTERVAL = 3
+local CHECK_RESET_TIMES = {["8s"]=true, ["6s"]=true}
+local LOCK_WIGGLE_TIMES = {["4s"]=true, ["3s"]=true, ["2s"]=true, ["1s"]=true, ["0s"]=true}
+
+local _enabled = false
+local _connections = {}
+local _debounce = false
+local _baseModel = nil
+local _purchasesFolder = nil
+local _countdownLabel = nil
+local _hitboxPart = nil
+local _rescanThread = nil
+local _lockHbConn = nil
+local _lockRun = false
+
+local function _track(conn)
+    if conn then table.insert(_connections, conn) end
+    return conn
+end
+local function _disconnectAll()
+    for _,conn in ipairs(_connections) do
+        if conn.Connected then conn:Disconnect() end
+    end
+    table.clear(_connections)
+    if _lockHbConn and _lockHbConn.Connected then _lockHbConn:Disconnect() end
+    _lockHbConn = nil
+    _lockRun = false
+end
+
+local function _findBase()
+    local plots = workspace:FindFirstChild("Plots")
+    if not plots then return nil,nil end
+    local userLower = string.lower(player.Name)
+    local displayLower = string.lower(player.DisplayName)
+    for _, model in ipairs(plots:GetChildren()) do
+        if model:IsA("Model") then
+            for _, obj in ipairs(model:GetDescendants()) do
+                if obj:IsA("TextLabel") then
+                    local txt = string.lower(obj.Text)
+                    if string.find(txt, userLower, 1, true) or string.find(txt, displayLower, 1, true) then
+                        local purchases = model:FindFirstChild("Purchases")
+                        return model, purchases
+                    end
+                end
+            end
+        end
+    end
+    return nil,nil
+end
+
+local function _findCountdownAndHitbox()
+    if not _purchasesFolder then return nil,nil end
+    local rem, hit
+    for _, obj in ipairs(_purchasesFolder:GetDescendants()) do
+        if obj:IsA("TextLabel") and obj.Name == "RemainingTime" then
+            rem = obj
+        elseif obj:IsA("BasePart") and obj.Name == "Hitbox" then
+            hit = obj
+        end
+    end
+    return rem, hit
+end
+
+local function _resetAndWalk()
+    if _debounce then return end
+    _debounce = true
+    local char = player.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.Health = 0 end
+    end
+    player.CharacterAdded:Wait()
+    task.defer(function()
+        local hit = _hitboxPart
+        if hit == nil or not hit.Parent then
+            _countdownLabel, _hitboxPart = _findCountdownAndHitbox()
+            hit = _hitboxPart
+        end
+        if hit then
+            local newChar = player.Character
+            if not newChar then return end
+            local hum = newChar:FindFirstChildOfClass("Humanoid")
+            if not hum then return end
+            hum:MoveTo(hit.Position)
+        end
+        task.delay(1, function() _debounce = false end)
+    end)
+end
+
+local function _startLockWiggle()
+    if _lockRun then return end
+    _lockRun = true
+    local char = player.Character
+    if not char then _lockRun = false return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not (hrp and hum) then _lockRun = false return end
+    local amplitude = 2
+    local radiusLock = 6
+    local direction = 1
+    local centerPos = (_hitboxPart and _hitboxPart.Position) or hrp.Position
+    local autoRot = hum.AutoRotate
+    hum.AutoRotate = false
+    task.spawn(function()
+        while _lockRun and _enabled and _countdownLabel and LOCK_WIGGLE_TIMES[_countdownLabel.Text] do
+            if _hitboxPart and _hitboxPart.Parent then
+                centerPos = _hitboxPart.Position
+            end
+            local target = centerPos + Vector3.new(direction * amplitude, 0, 0)
+            hum:MoveTo(target)
+            hum.MoveToFinished:Wait(0.55)
+            direction = -direction
+        end
+    end)
+    _lockHbConn = RunService.Heartbeat:Connect(function()
+        if not (_enabled and _lockRun and _countdownLabel and LOCK_WIGGLE_TIMES[_countdownLabel.Text]) then
+            _lockRun = false
+            if _lockHbConn then _lockHbConn:Disconnect() end
+            _lockHbConn = nil
+            if hum and hum.Parent then
+                hum.AutoRotate = autoRot
+            end
+            return
+        end
+        if _hitboxPart and _hitboxPart.Parent then
+            centerPos = _hitboxPart.Position
+        end
+        if hrp and hrp.Parent then
+            local dist = (hrp.Position - centerPos).Magnitude
+            if dist > radiusLock then
+                hrp.CFrame = CFrame.new(centerPos)
+            end
+        end
+    end)
+end
+
+local function _onCountdownChanged()
+    if not _enabled or not _countdownLabel then return end
+    local t = _countdownLabel.Text
+    if CHECK_RESET_TIMES[t] then
+        _resetAndWalk()
+        return
+    end
+    if LOCK_WIGGLE_TIMES[t] then
+        _startLockWiggle()
+    end
+end
+
+local function _bindCountdown()
+    if not _countdownLabel then return end
+    _track(_countdownLabel:GetPropertyChangedSignal("Text"):Connect(_onCountdownChanged))
+end
+
+local function _rescanLoop()
+    while _enabled do
+        if (not _baseModel) or (not _baseModel.Parent) then
+            _baseModel, _purchasesFolder = _findBase()
+            _countdownLabel, _hitboxPart = _findCountdownAndHitbox()
+            if _countdownLabel then _bindCountdown() end
+        elseif (not _countdownLabel) or (not _countdownLabel.Parent) or (not _hitboxPart) or (not _hitboxPart.Parent) then
+            _countdownLabel, _hitboxPart = _findCountdownAndHitbox()
+            if _countdownLabel then _bindCountdown() end
+        end
+        task.wait(RESCAN_INTERVAL)
+    end
+end
+
+local function AutoLockBase_SetEnabled(state)
+    if state == _enabled then return end
+    _enabled = state
+    if not _enabled then
+        _disconnectAll()
+        _baseModel, _purchasesFolder = nil, nil
+        _countdownLabel, _hitboxPart = nil, nil
+        _debounce = false
+        return
+    end
+    _baseModel, _purchasesFolder = _findBase()
+    _countdownLabel, _hitboxPart = _findCountdownAndHitbox()
+    if _countdownLabel then _bindCountdown() end
+    _resetAndWalk()
+    _rescanThread = task.spawn(_rescanLoop)
+    _track(player.CharacterAdded:Connect(function()
+        if not _enabled then return end
+        task.defer(function()
+            local char = player.Character
+            if not char then return end
+            char:WaitForChild("HumanoidRootPart", 5)
+            if not _hitboxPart or not _hitboxPart.Parent then
+                _countdownLabel, _hitboxPart = _findCountdownAndHitbox()
+            end
+            if _hitboxPart then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum then hum:MoveTo(_hitboxPart.Position) end
+            end
+        end)
+    end))
+end
+
+getgenv().AutoLockBase_SetEnabled = AutoLockBase_SetEnabled
+
+return {
+    SetEnabled = AutoLockBase_SetEnabled
+}
