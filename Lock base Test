@@ -9,6 +9,7 @@ local resetFromScript = false
 local base = nil
 local purchasesFolder = nil
 
+-- cache base milik player
 do
     local userLower = string.lower(player.Name)
     local displayLower = string.lower(player.DisplayName)
@@ -34,6 +35,25 @@ if base then
     purchasesFolder = base:FindFirstChild("Purchases")
 end
 
+-- ===== internal connection/loop tracking =====
+local _connections = {}
+local function track(conn)
+    if conn then table.insert(_connections, conn) end
+    return conn
+end
+local _activeWalkLoop = false
+local _activeWiggleLoop = false
+
+local function stopAllInternal()
+    for _,conn in ipairs(_connections) do
+        if conn.Connected then conn:Disconnect() end
+    end
+    table.clear(_connections)
+    _activeWalkLoop = false
+    _activeWiggleLoop = false
+end
+
+-- ===== original logic helpers (tidak diubah) =====
 local function findObjects()
     if not purchasesFolder then return nil, nil end
     local rem, hit = nil, nil
@@ -60,6 +80,12 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum then return end
     if not label then return end
+
+    -- hentikan wiggle lama dulu
+    _activeWiggleLoop = false
+    task.wait() -- beri 1 frame supaya loop lama sempat keluar
+    _activeWiggleLoop = true
+
     local centerPos = hitbox and hitbox.Position or hrp.Position
     local amplitude = 2
     local radiusLock = 6
@@ -68,13 +94,17 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
     local run = true
     local originalAutoRotate = hum.AutoRotate
     hum.AutoRotate = false
+
     local function stillValid()
         if not run then return false end
+        if not toggleActive then return false end
+        if not _activeWiggleLoop then return false end
         if not hrp or not hrp.Parent then return false end
         if not hum or hum.Health <= 0 then return false end
         if not label or not label.Parent then return false end
         return countdownSet[label.Text] == true
     end
+
     task.spawn(function()
         while stillValid() do
             local target = centerPos + Vector3.new(direction * amplitude, 0, 0)
@@ -88,6 +118,7 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
         end
         run = false
     end)
+
     local hbConn
     hbConn = RunService.Heartbeat:Connect(function()
         if not stillValid() then
@@ -103,6 +134,8 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
             hrp.CFrame = CFrame.new(centerPos + Vector3.new(direction * amplitude * 0.5, 0, 0))
         end
     end)
+    track(hbConn)
+
     task.spawn(function()
         while stillValid() do
             task.wait(0.2)
@@ -112,7 +145,6 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
             hum:Move(Vector3.new(0,0,0))
             hum.AutoRotate = originalAutoRotate
         end
-        if hbConn then hbConn:Disconnect() end
     end)
 end
 
@@ -121,39 +153,55 @@ local function walkToBase(hitbox)
     local hrp = char:WaitForChild("HumanoidRootPart", 5)
     local hum = char:WaitForChild("Humanoid", 5)
     if not (hum and hrp and hitbox) then return end
+
+    -- hentikan loop jalan lama
+    _activeWalkLoop = false
+    task.wait()
+    _activeWalkLoop = true
+
     local touched = false
     local touchedConn
     touchedConn = hitbox.Touched:Connect(function(part)
+        if not toggleActive then return end
         if part:IsDescendantOf(char) then
             touched = true
-            touchedConn:Disconnect()
+            if touchedConn then touchedConn:Disconnect() end
             local countdownLabel, _ = findObjects()
             if countdownLabel then
                 wiggleWhileCountdown(hrp, countdownLabel, hitbox)
             end
         end
     end)
+    track(touchedConn)
+
     task.spawn(function()
-        while not touched and char and hum and hitbox do
+        while _activeWalkLoop and toggleActive and not touched and char and hum and hitbox do
             hum:MoveTo(hitbox.Position)
-            wait(0.5)
+            task.wait(0.5)
         end
     end)
+
     local conn
     conn = hum.MoveToFinished:Connect(function(reached)
-        conn:Disconnect()
+        if conn then conn:Disconnect() end
+        if not toggleActive then return end
         if reached and touched then
             for i = 1, 2 do
+                if not toggleActive then break end
                 hum.Jump = true
-                wait(1)
+                task.wait(1)
             end
         end
     end)
+    track(conn)
 end
 
-local function checkCountdown()
+-- ===== frame loop kontrol countdown =====
+local _mainLoopConn = nil
+local function startCountdownLoop()
+    if _mainLoopConn then return end
     local checkTimes = {"8s","6s"}
-    RunService.RenderStepped:Connect(function()
+    _mainLoopConn = RunService.RenderStepped:Connect(function()
         if not toggleActive then return end
         local char = player.Character or player.CharacterAdded:Wait()
         local countdownLabel, hitboxPart = findObjects()
@@ -168,7 +216,7 @@ local function checkCountdown()
                         task.spawn(function()
                             player.CharacterAdded:Wait()
                             local _, newHitbox = findObjects()
-                            if newHitbox then
+                            if toggleActive and newHitbox then
                                 walkToBase(newHitbox)
                             end
                             task.delay(1, function()
@@ -181,11 +229,22 @@ local function checkCountdown()
             end
         end
     end)
+    track(_mainLoopConn)
 end
 
+local function stopCountdownLoop()
+    if _mainLoopConn then
+        if _mainLoopConn.Connected then _mainLoopConn:Disconnect() end
+        _mainLoopConn = nil
+    end
+end
+
+-- ===== public enable/disable =====
 local function AutoLockBase_SetEnabled(state)
     if state and not toggleActive then
         toggleActive = true
+        startCountdownLoop()
+
         if not debounce then
             debounce = true
             resetFromScript = true
@@ -196,6 +255,7 @@ local function AutoLockBase_SetEnabled(state)
             end
             player.CharacterAdded:Wait()
             task.delay(0.1, function()
+                if not toggleActive then return end
                 local _, hitbox = findObjects()
                 if hitbox then
                     walkToBase(hitbox)
@@ -204,11 +264,14 @@ local function AutoLockBase_SetEnabled(state)
                 resetFromScript = false
             end)
         end
+
     elseif (not state) and toggleActive then
         toggleActive = false
+        stopCountdownLoop()
+        stopAllInternal()
+        debounce = false
+        resetFromScript = false
     end
 end
 
 getgenv().AutoLockBase_SetEnabled = AutoLockBase_SetEnabled
-
-checkCountdown()
