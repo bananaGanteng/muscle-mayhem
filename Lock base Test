@@ -1,3 +1,7 @@
+--========================================================
+-- Auto Lock Base (FIXED: full clean shutdown on toggle OFF)
+--========================================================
+
 local player = game.Players.LocalPlayer
 local RunService = game:GetService("RunService")
 local plots = workspace:WaitForChild("Plots")
@@ -8,6 +12,9 @@ local resetFromScript = false
 
 local base = nil
 local purchasesFolder = nil
+
+-- unique session counter; naik tiap kali enable
+local _sessionId = 0
 
 -- cache base milik player
 do
@@ -46,14 +53,16 @@ local _activeWiggleLoop = false
 
 local function stopAllInternal()
     for _,conn in ipairs(_connections) do
-        if conn.Connected then conn:Disconnect() end
+        if conn.Connected then
+            conn:Disconnect()
+        end
     end
     table.clear(_connections)
     _activeWalkLoop = false
     _activeWiggleLoop = false
 end
 
--- ===== original logic helpers (tidak diubah) =====
+-- ===== original logic helpers (tidak diubah banyak) =====
 local function findObjects()
     if not purchasesFolder then return nil, nil end
     local rem, hit = nil, nil
@@ -74,6 +83,7 @@ local function findObjects()
 end
 
 local function wiggleWhileCountdown(hrp, label, hitbox)
+    local mySession = _sessionId  -- session guard
     local countdownSet = {["4s"]=true, ["3s"]=true, ["2s"]=true, ["1s"]=true, ["0s"]=true}
     if not hrp or not hrp.Parent then return end
     local char = hrp.Parent
@@ -84,6 +94,7 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
     -- hentikan wiggle lama dulu
     _activeWiggleLoop = false
     task.wait() -- beri 1 frame supaya loop lama sempat keluar
+    if not toggleActive or mySession ~= _sessionId then return end
     _activeWiggleLoop = true
 
     local centerPos = hitbox and hitbox.Position or hrp.Position
@@ -96,6 +107,7 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
     hum.AutoRotate = false
 
     local function stillValid()
+        if mySession ~= _sessionId then return false end
         if not run then return false end
         if not toggleActive then return false end
         if not _activeWiggleLoop then return false end
@@ -105,6 +117,7 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
         return countdownSet[label.Text] == true
     end
 
+    -- gerakan kiri kanan
     task.spawn(function()
         while stillValid() do
             local target = centerPos + Vector3.new(direction * amplitude, 0, 0)
@@ -113,12 +126,14 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
                 target = centerPos + Vector3.new(direction * amplitude, 0, 0)
             end
             hum:MoveTo(target)
-            hum.MoveToFinished:Wait(stepTime + 0.2)
+            hum.MoveToFinished:Wait() -- tunggu saja event, lalu delay
+            task.wait(stepTime + 0.2)
             direction = -direction
         end
         run = false
     end)
 
+    -- kunci radius
     local hbConn
     hbConn = RunService.Heartbeat:Connect(function()
         if not stillValid() then
@@ -136,6 +151,7 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
     end)
     track(hbConn)
 
+    -- watcher untuk restore state ketika selesai
     task.spawn(function()
         while stillValid() do
             task.wait(0.2)
@@ -149,6 +165,7 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
 end
 
 local function walkToBase(hitbox)
+    local mySession = _sessionId  -- session guard
     local char = player.Character or player.CharacterAdded:Wait()
     local hrp = char:WaitForChild("HumanoidRootPart", 5)
     local hum = char:WaitForChild("Humanoid", 5)
@@ -157,12 +174,13 @@ local function walkToBase(hitbox)
     -- hentikan loop jalan lama
     _activeWalkLoop = false
     task.wait()
+    if not toggleActive or mySession ~= _sessionId then return end
     _activeWalkLoop = true
 
     local touched = false
     local touchedConn
     touchedConn = hitbox.Touched:Connect(function(part)
-        if not toggleActive then return end
+        if not toggleActive or mySession ~= _sessionId then return end
         if part:IsDescendantOf(char) then
             touched = true
             if touchedConn then touchedConn:Disconnect() end
@@ -174,20 +192,22 @@ local function walkToBase(hitbox)
     end)
     track(touchedConn)
 
+    -- loop jalan ke hitbox
     task.spawn(function()
-        while _activeWalkLoop and toggleActive and not touched and char and hum and hitbox do
+        while toggleActive and _activeWalkLoop and not touched and char and hum and hitbox and mySession == _sessionId do
             hum:MoveTo(hitbox.Position)
             task.wait(0.5)
         end
     end)
 
+    -- respon setelah MoveTo selesai
     local conn
     conn = hum.MoveToFinished:Connect(function(reached)
         if conn then conn:Disconnect() end
-        if not toggleActive then return end
+        if not toggleActive or mySession ~= _sessionId then return end
         if reached and touched then
             for i = 1, 2 do
-                if not toggleActive then break end
+                if not toggleActive or mySession ~= _sessionId then break end
                 hum.Jump = true
                 task.wait(1)
             end
@@ -200,9 +220,10 @@ end
 local _mainLoopConn = nil
 local function startCountdownLoop()
     if _mainLoopConn then return end
+    local mySession = _sessionId  -- snapshot session saat start
     local checkTimes = {"8s","6s"}
     _mainLoopConn = RunService.RenderStepped:Connect(function()
-        if not toggleActive then return end
+        if not toggleActive or mySession ~= _sessionId then return end
         local char = player.Character or player.CharacterAdded:Wait()
         local countdownLabel, hitboxPart = findObjects()
         if countdownLabel and not debounce then
@@ -215,12 +236,20 @@ local function startCountdownLoop()
                         hum.Health = 0
                         task.spawn(function()
                             player.CharacterAdded:Wait()
+                            if not toggleActive or mySession ~= _sessionId then
+                                debounce = false
+                                resetFromScript = false
+                                return
+                            end
                             local _, newHitbox = findObjects()
-                            if toggleActive and newHitbox then
+                            if toggleActive and mySession == _sessionId and newHitbox then
                                 walkToBase(newHitbox)
                             end
                             task.delay(1, function()
-                                debounce = false
+                                if mySession == _sessionId then
+                                    debounce = false
+                                    resetFromScript = false
+                                end
                             end)
                         end)
                         break
@@ -243,6 +272,7 @@ end
 local function AutoLockBase_SetEnabled(state)
     if state and not toggleActive then
         toggleActive = true
+        _sessionId += 1  -- start sesi baru
         startCountdownLoop()
 
         if not debounce then
@@ -253,11 +283,18 @@ local function AutoLockBase_SetEnabled(state)
                 local hum = char:FindFirstChildOfClass("Humanoid")
                 if hum then hum.Health = 0 end
             end
-            player.CharacterAdded:Wait()
-            task.delay(0.1, function()
-                if not toggleActive then return end
+
+            -- tunggu respawn lalu mulai jalan
+            task.spawn(function()
+                player.CharacterAdded:Wait()
+                task.wait(0.1)
+                if not toggleActive then
+                    debounce = false
+                    resetFromScript = false
+                    return
+                end
                 local _, hitbox = findObjects()
-                if hitbox then
+                if hitbox and toggleActive then
                     walkToBase(hitbox)
                 end
                 debounce = false
@@ -267,8 +304,20 @@ local function AutoLockBase_SetEnabled(state)
 
     elseif (not state) and toggleActive then
         toggleActive = false
+        _sessionId += 1 -- invalidasi semua loop lama
         stopCountdownLoop()
         stopAllInternal()
+
+        -- Pastikan Humanoid berhenti bergerak & rotasi kembali normal
+        local char = player.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum:Move(Vector3.zero)
+                hum.AutoRotate = true
+            end
+        end
+
         debounce = false
         resetFromScript = false
     end
