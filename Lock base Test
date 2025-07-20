@@ -127,7 +127,7 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
             end
             hum:MoveTo(target)
             hum.MoveToFinished:Wait() -- tunggu saja event, lalu delay
-            task.wait(stepTime + 0.2)
+            task.wait(stepTime + 0.05)
             direction = -direction
         end
         run = false
