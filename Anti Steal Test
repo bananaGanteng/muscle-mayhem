@@ -1,4 +1,4 @@
--- Zona Perlindungan Toggle-able Version
+-- Anti Steal Test (versi tidak tabrakan)
 if getgenv().ProtectionEnabled == nil then
 	getgenv().ProtectionEnabled = false
 end
@@ -7,35 +7,34 @@ local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
 local player = Players.LocalPlayer
 local plots = workspace:WaitForChild("Plots")
-local zone = nil
+local zone
 
--- Fungsi pencarian base (Name/DisplayName)
+-- cari base
 local function getStructureBaseHome()
 	local userLower = string.lower(player.Name)
 	local displayLower = string.lower(player.DisplayName)
-
 	for _, base in ipairs(plots:GetChildren()) do
 		if base:IsA("Model") then
-			local matchThisBase = false
-			for _, descendant in ipairs(base:GetDescendants()) do
-				if descendant:IsA("TextLabel") then
-					local txt = string.lower(descendant.Text)
+			local match = false
+			for _, d in ipairs(base:GetDescendants()) do
+				if d:IsA("TextLabel") then
+					local txt = string.lower(d.Text)
 					if string.find(txt, userLower, 1, true) or string.find(txt, displayLower, 1, true) then
-						matchThisBase = true
+						match = true
 						break
 					end
 				end
 			end
-			if matchThisBase then
+			if match then
 				local decorations = base:FindFirstChild("Decorations")
 				if decorations then
 					local innerModel = decorations:FindFirstChild("Model")
 					if innerModel then
-						local children = innerModel:GetChildren()
-						if #children >= 5 and children[5]:IsA("BasePart") then
-							return children[5]
+						local kids = innerModel:GetChildren()
+						if #kids >= 5 and kids[5]:IsA("BasePart") then
+							return kids[5]
 						end
-						for _, c in ipairs(children) do
+						for _, c in ipairs(kids) do
 							if c:IsA("BasePart") then
 								return c
 							end
@@ -48,16 +47,14 @@ local function getStructureBaseHome()
 	return nil
 end
 
--- Fungsi cek posisi dalam zone
-local function isInsidePart(part, position)
-	local localPos = part.CFrame:PointToObjectSpace(position)
-	local halfSize = part.Size / 2
-	return math.abs(localPos.X) <= halfSize.X
-		and math.abs(localPos.Y) <= halfSize.Y
-		and math.abs(localPos.Z) <= halfSize.Z
+local function isInsidePart(part, pos)
+	local localPos = part.CFrame:PointToObjectSpace(pos)
+	local half = part.Size / 2
+	return math.abs(localPos.X) <= half.X
+		and math.abs(localPos.Y) <= half.Y
+		and math.abs(localPos.Z) <= half.Z
 end
 
--- Aktifkan perlindungan
 getgenv().activateProtection = function()
 	if getgenv().ProtectionEnabled then return end
 	getgenv().ProtectionEnabled = true
@@ -85,8 +82,7 @@ getgenv().activateProtection = function()
 			while getgenv().ProtectionEnabled and getgenv().ProtectionThread do
 				for _, plr in ipairs(Players:GetPlayers()) do
 					if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-						local pos = plr.Character.HumanoidRootPart.Position
-						if isInsidePart(zone, pos) then
+						if isInsidePart(zone, plr.Character.HumanoidRootPart.Position) then
 							getgenv().ProtectionThread = false
 							game:Shutdown()
 							break
@@ -101,7 +97,6 @@ getgenv().activateProtection = function()
 	end
 end
 
--- Matikan perlindungan
 getgenv().deactivateProtection = function()
 	getgenv().ProtectionEnabled = false
 	getgenv().ProtectionThread = false
@@ -110,11 +105,14 @@ getgenv().deactivateProtection = function()
 	end
 end
 
--- Fungsi global untuk toggle luar
-function AutoLockBase_SetEnabled(state)
+-- GANTI: expose dengan nama unik supaya tidak ditimpa script lain
+function AntiSteal_SetEnabled(state)
 	if state then
 		getgenv().activateProtection()
 	else
 		getgenv().deactivateProtection()
 	end
 end
+
+-- optional: publish ke getgenv kalau mau akses bebas
+getgenv().AntiSteal_SetEnabled = AntiSteal_SetEnabled
