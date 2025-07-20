@@ -90,8 +90,8 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
 
     local centerPos = hitbox and hitbox.Position or hrp.Position
     local amplitude = 2
-    local radiusLock = 6
-    local stepTime = 0.1
+    local radiusLock = 5
+    local stepTime = 0
     local direction = 1
     local run = true
     local originalAutoRotate = hum.AutoRotate
@@ -117,7 +117,7 @@ local function wiggleWhileCountdown(hrp, label, hitbox)
             end
             hum:MoveTo(target)
             hum.MoveToFinished:Wait()
-            task.wait(stepTime + 0.5)
+            task.wait(stepTime + 0)
             direction = -direction
         end
         run = false
