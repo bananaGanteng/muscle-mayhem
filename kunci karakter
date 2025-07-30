@@ -1,0 +1,85 @@
+-- Hapus GUI lama jika ada
+pcall(function()
+    game.CoreGui:FindFirstChild("LockCharacterGUI"):Destroy()
+end)
+
+-- Buat GUI
+local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
+ScreenGui.Name = "LockCharacterGUI"
+ScreenGui.ResetOnSpawn = false
+
+-- Ukuran lebih kecil (90% dari sebelumnya)
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 198, 0, 90)
+Frame.Position = UDim2.new(0.5, -99, 0.5, -45)
+Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Frame.BorderSizePixel = 0
+Frame.Active = true
+Frame.Draggable = true
+Frame.BackgroundTransparency = 0.1
+
+-- Garis pinggir
+local UICorner = Instance.new("UICorner", Frame)
+UICorner.CornerRadius = UDim.new(0, 8)
+
+-- Judul
+local Title = Instance.new("TextLabel", Frame)
+Title.Size = UDim2.new(1, 0, 0, 28)
+Title.Position = UDim2.new(0, 0, 0, 0)
+Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+Title.Text = "Lock Character"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 17
+Title.Font = Enum.Font.GothamBold
+Title.BorderSizePixel = 0
+
+local TitleCorner = Instance.new("UICorner", Title)
+TitleCorner.CornerRadius = UDim.new(0, 6)
+
+-- Tombol Toggle
+local ToggleButton = Instance.new("TextButton", Frame)
+ToggleButton.Size = UDim2.new(0.8, 0, 0, 38)
+ToggleButton.Position = UDim2.new(0.1, 0, 0, 42)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60) -- OFF awal
+ToggleButton.Text = "OFF"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 16
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.BorderSizePixel = 0
+
+local ButtonCorner = Instance.new("UICorner", ToggleButton)
+ButtonCorner.CornerRadius = UDim.new(0, 6)
+
+-- Logika: ON = terkunci | OFF = bebas
+local isLocked = false -- awalnya bebas (OFF)
+
+local function updateLock()
+    local character = game.Players.LocalPlayer.Character
+    if not character then return end
+
+    for _, part in pairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            -- Cek apakah bagian dari Tool
+            local tool = part:FindFirstAncestorOfClass("Tool")
+            if not tool then
+                part.Anchored = isLocked
+            end
+        end
+    end
+
+    if isLocked then
+        ToggleButton.Text = "ON"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(70, 130, 180)
+    else
+        ToggleButton.Text = "OFF"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+    end
+end
+
+ToggleButton.MouseButton1Click:Connect(function()
+    isLocked = not isLocked
+    updateLock()
+end)
+
+-- Inisialisasi tampilan awal (OFF = bebas)
+updateLock()
